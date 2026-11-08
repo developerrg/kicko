@@ -121,13 +121,13 @@ public function saveSubcategory() {
         ]);
     }
 
-        // Check if subcategory name already exists
-        $exists = $this->subcategoryModel->issubCategoryExists($subcategory_name, $sub_id);
+        // Check if subcategory name already exists under the same category
+        $exists = $this->subcategoryModel->issubCategoryExists($subcategory_name, $cat_id, $sub_id);
         if ($exists) {
             return $this->response->setJSON([
                 'status' => 'error',
                 'field' => 'subcategory_name',
-                'message' => 'Subcategory name already exists.'
+                'message' => 'Subcategory name already exists in this category.'
             ]);
         }
 
