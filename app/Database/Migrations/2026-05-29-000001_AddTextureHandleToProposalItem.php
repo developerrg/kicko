@@ -6,9 +6,11 @@ use CodeIgniter\Database\Migration;
 
 class AddTextureHandleToProposalItem extends Migration
 {
+    private const TABLE = 'kico_proposal_item';
+
     public function up(): void
     {
-        $this->forge->addColumn('kico_proposal_item', [
+        $columns = [
             'texture_code' => [
                 'type'       => 'VARCHAR',
                 'constraint' => 255,
@@ -23,11 +25,22 @@ class AddTextureHandleToProposalItem extends Migration
                 'default'    => null,
                 'after'      => 'texture_code',
             ],
-        ]);
+        ];
+
+        // Add in order, skipping columns that already exist
+        foreach ($columns as $name => $def) {
+            if (! $this->db->fieldExists($name, self::TABLE)) {
+                $this->forge->addColumn(self::TABLE, [$name => $def]);
+            }
+        }
     }
 
     public function down(): void
     {
-        $this->forge->dropColumn('kico_proposal_item', ['texture_code', 'handle_type']);
+        foreach (['texture_code', 'handle_type'] as $name) {
+            if ($this->db->fieldExists($name, self::TABLE)) {
+                $this->forge->dropColumn(self::TABLE, $name);
+            }
+        }
     }
 }

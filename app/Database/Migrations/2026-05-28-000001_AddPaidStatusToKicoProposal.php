@@ -8,6 +8,10 @@ class AddPaidStatusToKicoProposal extends Migration
 {
     public function up(): void
     {
+        if ($this->db->fieldExists('paid_status', 'kico_proposal')) {
+            return;
+        }
+
         $this->forge->addColumn('kico_proposal', [
             'paid_status' => [
                 'type'    => 'TINYINT',
@@ -20,6 +24,8 @@ class AddPaidStatusToKicoProposal extends Migration
 
     public function down(): void
     {
-        $this->forge->dropColumn('kico_proposal', 'paid_status');
+        if ($this->db->fieldExists('paid_status', 'kico_proposal')) {
+            $this->forge->dropColumn('kico_proposal', 'paid_status');
+        }
     }
 }
