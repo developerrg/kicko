@@ -98,13 +98,13 @@ $(document).ready(function () {
             var tbody = $('#itemsTbody');
             tbody.empty();
             if (!it || it.length === 0) {
-                tbody.append('<tr><td colspan="13" class="text-center text-muted">No items found</td></tr>');
+                tbody.append('<tr><td colspan="11" class="text-center text-muted">No items found</td></tr>');
             } else {
                 $.each(it, function (i, row) {
                     if (row.is_category == 1 || row.is_category === true) {
                         tbody.append(
                             '<tr class="table-secondary">'
-                          + '<td colspan="13"><strong>' + (row.description || '') + '</strong></td>'
+                          + '<td colspan="11"><strong>' + (row.description || '') + '</strong></td>'
                           + '</tr>'
                         );
                     } else {
@@ -122,8 +122,6 @@ $(document).ready(function () {
                           + '<td>' + esc(humanizeType(row.cupboard_type)) + '</td>'
                           + '<td class="text-center">' + esc(row.size) + '</td>'
                           + '<td class="text-center">' + esc(row.design_code) + '</td>'
-                          + '<td>' + esc(row.handle_type) + '</td>'
-                          + '<td class="text-center">' + esc(row.door_state) + '</td>'
                           + '<td>' + esc(row.texture_code) + '</td>'
                           + '<td>' + accessoriesHtml(row.accessories) + '</td>'
                           + '<td class="text-center">' + (row.qty !== null ? row.qty : '') + '</td>'

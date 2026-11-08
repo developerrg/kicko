@@ -178,7 +178,7 @@ class PDFController extends BaseController
                     continue;
                 }
 
-                // PDF description: product name | cupboard type | size | design | handle | door | texture [| accessories]
+                // PDF description: product name | cupboard type | size | design | texture [| accessories]
                 $productName = trim($product['pr_Name'] ?? '');
                 $desc        = $productName;
 
@@ -188,7 +188,6 @@ class PDFController extends BaseController
                 $subName      = trim((string)($product['sub_Category_Name'] ?? ''));
                 $size         = preg_match('/^\s*(\d+(?:\.\d+)?)/', $subName, $mm) ? $mm[1] : $subName;
                 $designCode   = trim((string)($item['designCode'] ?? ''));
-                $doorState    = trim((string)($item['doorState'] ?? ''));
 
                 $extras = [];
                 if ($cupboardType !== '') {
@@ -203,12 +202,6 @@ class PDFController extends BaseController
                 }
                 if ($designCode !== '') {
                     $extras[] = $designCode;
-                }
-                if (!empty($item['handleType'])) {
-                    $extras[] = $item['handleType'];
-                }
-                if ($doorState !== '') {
-                    $extras[] = 'Door ' . $doorState;
                 }
                 if (!empty($item['textureCode'])) {
                     $extras[] = $item['textureCode'];
@@ -247,11 +240,9 @@ class PDFController extends BaseController
                     'qty'         => $qty,
                     'unit'        => $item['unit'] ?? 'Nos',
                     'textureCode' => isset($item['textureCode']) && $item['textureCode'] !== '' ? (string)$item['textureCode'] : null,
-                    'handleType'  => isset($item['handleType'])  && $item['handleType']  !== '' ? (string)$item['handleType']  : null,
                     'cupboardType' => $cupboardType !== '' ? $cupboardType : null,
                     'size'         => $size         !== '' ? $size         : null,
                     'designCode'   => $designCode   !== '' ? $designCode   : null,
-                    'doorState'    => $doorState    !== '' ? $doorState    : null,
                     'rate'      => $rate,
                     'amount'      => $amount,
                 ];

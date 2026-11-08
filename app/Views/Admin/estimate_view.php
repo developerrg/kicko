@@ -96,8 +96,6 @@
                                                 <th>Cupboard Type</th>
                                                 <th>Size (cm)</th>
                                                 <th>Design</th>
-                                                <th>Handle</th>
-                                                <th>Door</th>
                                                 <th>Texture</th>
                                                 <th>Accessories</th>
                                                 <th>Qty</th>
