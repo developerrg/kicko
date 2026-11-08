@@ -56,10 +56,12 @@
                                         <table class="table table-sm table-borderless mb-0" style="table-layout:fixed;width:100%;">
                                             <colgroup><col style="width:140px"><col></colgroup>
                                             <tr><th>Name</th><td id="cd-name" style="word-break:break-word;overflow-wrap:break-word;">—</td></tr>
+                                            <tr><th>Project Name</th><td id="cd-project-name" style="word-break:break-word;overflow-wrap:break-word;">—</td></tr>
                                             <tr><th>Address</th><td id="cd-address" style="white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;">—</td></tr>
                                             <tr><th>Phone</th><td id="cd-phone">—</td></tr>
                                             <tr><th>Email</th><td id="cd-email" style="word-break:break-all;overflow-wrap:break-word;">—</td></tr>
-                                            <tr id="cd-location-row" style="display:none;"><th>Site Name</th><td id="cd-location" style="white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;">—</td></tr>
+                                            <tr><th>PIN</th><td id="cd-pin">—</td></tr>
+                                            <tr id="cd-location-row" style="display:none;"><th>Location</th><td id="cd-location" style="white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;">—</td></tr>
                                         </table>
                                     </div>
                                 </div>
@@ -91,6 +93,12 @@
                                             <tr>
                                                 <th>Sl.No</th>
                                                 <th>Description</th>
+                                                <th>Cupboard Type</th>
+                                                <th>Size (cm)</th>
+                                                <th>Design</th>
+                                                <th>Handle</th>
+                                                <th>Door</th>
+                                                <th>Texture</th>
                                                 <th>Qty</th>
                                                 <th>Unit</th>
                                                 <th class="text-end">Rate (Rs.)</th>

@@ -295,8 +295,9 @@ class PDFService
         // ── Row 7 (optional): Location  ──────────────────────────────────
         // Build location text from whatever fields are present
         // Only show site name in PDF; coordinates are saved to DB only
-        $hasLocation = !empty($cd['location']);
-        $locText     = $hasLocation ? trim((string)$cd['location']) : '';
+        // Full-width extra row now shows Project Name (address already = location + pin)
+        $hasLocation = !empty($cd['projectName']);
+        $locText     = $hasLocation ? trim((string)$cd['projectName']) : '';
 
         // Base block height (rows 1–6)
         $baseH  = $rowH + $addrH + $rowH + $rowH;  // 7+21+7+7 = 42 mm
@@ -307,7 +308,7 @@ class PDFService
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->SetXY($startX, $y7);
             // Full-width row: "Site name" label cell + value spanning all remaining columns
-            $pdf->MultiCell($lbl, $lineH, 'Site name', 0, 'L', false, 0, $startX, $y7, true, 0, false, true, $rowH, 'M', false);
+            $pdf->MultiCell($lbl, $lineH, 'Project Name', 0, 'L', false, 0, $startX, $y7, true, 0, false, true, $rowH, 'M', false);
             $pdf->SetFont('helvetica', '', 9);
             $pdf->SetXY($startX + $lbl, $y7);
             $pdf->MultiCell(self::USABLE_W - $lbl, $lineH, $locText, 0, 'L', false, 0, $startX + $lbl, $y7, true, 0, false, true, $rowH, 'M', false);

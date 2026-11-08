@@ -14,7 +14,8 @@ class ProposalItemModel extends Model
     protected $allowedFields = [
         'proposal_id', 'is_category',
         'sl_no', 'description',
-        'qty', 'unit', 'texture_code', 'handle_type', 'rate', 'amount', 'amount_text',
+        'qty', 'unit', 'texture_code', 'handle_type',
+        'cupboard_type', 'size', 'design_code', 'door_state', 'rate', 'amount', 'amount_text',
         'sort_order', 'status', 'created_at',
     ];
 
@@ -44,6 +45,10 @@ class ProposalItemModel extends Model
                 'unit'         => $isCat ? null : ($item['unit'] ?? null),
                 'texture_code' => $isCat ? null : ($item['textureCode'] ?? null),
                 'handle_type'  => $isCat ? null : ($item['handleType']  ?? null),
+                'cupboard_type' => $isCat ? null : ($item['cupboardType'] ?? null),
+                'size'          => $isCat ? null : ($item['size']         ?? null),
+                'design_code'   => $isCat ? null : ($item['designCode']   ?? null),
+                'door_state'    => $isCat ? null : ($item['doorState']    ?? null),
                 'rate'         => $isCat ? null : (isset($item['rate']) && is_numeric($item['rate']) ? $item['rate'] : null),
                 'amount'      => (!$isCat && is_numeric($rawAmount)) ? (float)$rawAmount : null,
                 'amount_text' => (!$isCat && !is_numeric($rawAmount) && $rawAmount !== null) ? (string)$rawAmount : null,

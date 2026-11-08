@@ -111,6 +111,13 @@ class PDFController extends BaseController
             $customerDetails['latitude']  = $latitude;
             $customerDetails['longitude'] = $longitude;
 
+            // Project name + PIN; address = location + pin (no separate address field)
+            $projectName = trim((string)($customerDetails['projectName'] ?? ''));
+            $pin         = trim((string)($customerDetails['pin'] ?? ''));
+            $customerDetails['projectName'] = $projectName;
+            $customerDetails['pin']         = $pin;
+            $customerDetails['address']     = implode(' - ', array_filter([$location, $pin], static fn($v) => $v !== null && $v !== ''));
+
             // ── Pre-load product cache ─────────────────────────────────────────
             $productCache = [];
             $db = \Config\Database::connect();
@@ -164,11 +171,36 @@ class PDFController extends BaseController
                             : ($item['boxModelCode'] ?? '')
                     );
                 }
-                if (!empty($item['textureCode'])) {
-                    $desc .= ($desc !== '' ? ' | ' : '') . $item['textureCode'];
+                $cupboardType = trim((string)($item['cupboardType'] ?? ''));
+                $size         = trim((string)($item['size'] ?? ''));
+                $designCode   = trim((string)($item['designCode'] ?? ''));
+                $doorState    = trim((string)($item['doorState'] ?? ''));
+
+                $extras = [];
+                if ($cupboardType !== '') {
+                    // CornerTopLeft → "Corner Top Left"
+                    $typeLabel = trim(preg_replace('/(?<!^)(?=[A-Z])/', ' ', $cupboardType));
+                    if (strcasecmp($typeLabel, $desc) !== 0) { // avoid "Filler | Filler"
+                        $extras[] = $typeLabel;
+                    }
+                }
+                if ($size !== '') {
+                    $extras[] = $size . (is_numeric($size) ? ' cm' : '');
+                }
+                if ($designCode !== '') {
+                    $extras[] = $designCode;
                 }
                 if (!empty($item['handleType'])) {
-                    $desc .= ($desc !== '' ? ' | ' : '') . $item['handleType'];
+                    $extras[] = $item['handleType'];
+                }
+                if ($doorState !== '') {
+                    $extras[] = 'Door ' . $doorState;
+                }
+                if (!empty($item['textureCode'])) {
+                    $extras[] = $item['textureCode'];
+                }
+                if ($extras) {
+                    $desc .= ($desc !== '' ? ' | ' : '') . implode(' | ', $extras);
                 }
 
                 $rate = null;
@@ -203,7 +235,11 @@ class PDFController extends BaseController
                     'unit'        => $item['unit'] ?? 'Nos',
                     'textureCode' => isset($item['textureCode']) && $item['textureCode'] !== '' ? (string)$item['textureCode'] : null,
                     'handleType'  => isset($item['handleType'])  && $item['handleType']  !== '' ? (string)$item['handleType']  : null,
-                    'rate'        => $rate,
+                    'cupboardType' => $cupboardType !== '' ? $cupboardType : null,
+                    'size'         => $size         !== '' ? $size         : null,
+                    'designCode'   => $designCode   !== '' ? $designCode   : null,
+                    'doorState'    => $doorState    !== '' ? $doorState    : null,
+                    'rate'      => $rate,
                     'amount'      => $amount,
                 ];
             }
@@ -251,7 +287,9 @@ class PDFController extends BaseController
             $proposalModel = new ProposalModel();
             $proposalId    = $proposalModel->insert([
                 'name'              => $customerDetails['name']           ?? null,
-                'address'           => $customerDetails['address']        ?? null,
+                'project_name'      => $projectName !== '' ? $projectName : null,
+                'pin'               => $pin !== '' ? $pin : null,
+                'address'           => $customerDetails['address'] !== '' ? $customerDetails['address'] : null,
                 'phone'             => $customerDetails['phone']          ?? null,
                 'email'             => $customerDetails['email']          ?? null,
                 'project_number'    => $customerDetails['projectNumber']  ?? null,

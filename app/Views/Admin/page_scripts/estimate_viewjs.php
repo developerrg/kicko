@@ -17,6 +17,15 @@ function formatIndian(num) {
     return (n < 0 ? '-' : '') + rest + ',' + last3 + (dec ? '.' + dec : '');
 }
 
+function esc(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    return $('<div>').text(v).html();
+}
+
+function humanizeType(v) {
+    return v ? String(v).replace(/([a-z])([A-Z])/g, '$1 $2') : v;
+}
+
 function setText(id, val) {
     var el = document.getElementById(id);
     if (el) el.textContent = val || '—';
@@ -41,6 +50,8 @@ $(document).ready(function () {
 
             // Customer info
             setText('cd-name',           p.name);
+            setText('cd-project-name',   p.project_name);
+            setText('cd-pin',            p.pin);
             setText('cd-address',        p.address);
             setText('cd-phone',          p.phone);
             setText('cd-email',          p.email);
@@ -74,13 +85,13 @@ $(document).ready(function () {
             var tbody = $('#itemsTbody');
             tbody.empty();
             if (!it || it.length === 0) {
-                tbody.append('<tr><td colspan="6" class="text-center text-muted">No items found</td></tr>');
+                tbody.append('<tr><td colspan="12" class="text-center text-muted">No items found</td></tr>');
             } else {
                 $.each(it, function (i, row) {
                     if (row.is_category == 1 || row.is_category === true) {
                         tbody.append(
                             '<tr class="table-secondary">'
-                          + '<td colspan="6"><strong>' + (row.description || '') + '</strong></td>'
+                          + '<td colspan="12"><strong>' + (row.description || '') + '</strong></td>'
                           + '</tr>'
                         );
                     } else {
@@ -95,6 +106,12 @@ $(document).ready(function () {
                             '<tr>'
                           + '<td>' + (row.sl_no || '') + '</td>'
                           + '<td>' + (row.description || '') + '</td>'
+                          + '<td>' + esc(humanizeType(row.cupboard_type)) + '</td>'
+                          + '<td class="text-center">' + esc(row.size) + '</td>'
+                          + '<td class="text-center">' + esc(row.design_code) + '</td>'
+                          + '<td>' + esc(row.handle_type) + '</td>'
+                          + '<td class="text-center">' + esc(row.door_state) + '</td>'
+                          + '<td>' + esc(row.texture_code) + '</td>'
                           + '<td class="text-center">' + (row.qty !== null ? row.qty : '') + '</td>'
                           + '<td class="text-center">' + (row.unit || '') + '</td>'
                           + '<td class="text-end">' + (row.rate !== null ? formatIndian(row.rate) : '') + '</td>'

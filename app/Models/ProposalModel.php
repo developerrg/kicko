@@ -13,7 +13,7 @@ class ProposalModel extends Model
     protected $useTimestamps = false;
 
     protected $allowedFields = [
-        'name', 'address', 'phone', 'email',
+        'name', 'project_name', 'pin', 'address', 'phone', 'email',
         'project_number', 'date_of_proposal',
         'sales_manager', 'service_support', 'referred_by',
         'location', 'latitude', 'longitude',
