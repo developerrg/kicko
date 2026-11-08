@@ -92,13 +92,14 @@
                                         <thead class="table-light">
                                             <tr>
                                                 <th>Sl.No</th>
-                                                <th>Description</th>
+                                                <th>Product Name</th>
                                                 <th>Cupboard Type</th>
                                                 <th>Size (cm)</th>
                                                 <th>Design</th>
                                                 <th>Handle</th>
                                                 <th>Door</th>
                                                 <th>Texture</th>
+                                                <th>Accessories</th>
                                                 <th>Qty</th>
                                                 <th>Unit</th>
                                                 <th class="text-end">Rate (Rs.)</th>

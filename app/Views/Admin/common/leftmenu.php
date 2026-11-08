@@ -52,6 +52,13 @@
                                     <span class="pcoded-mcaret"></span>
                                 </a>
                             </li>
+							<li class="<?= ($segment == 'accessory') ? 'active' : '' ?>">
+                                <a href="<?php echo base_url('admin/accessory') ?>" class="waves-effect waves-dark">
+                                    <span class="pcoded-micon"><i class="bi bi-gear"></i><b>D</b></span>
+                                    <span class="pcoded-mtext" data-i18n="nav.dash.main">Accessories</span>
+                                    <span class="pcoded-mcaret"></span>
+                                </a>
+                            </li>
 							<li class="<?= ($segment == 'product') ? 'active' : '' ?>">
                                 <a href="<?php echo base_url('admin/product') ?>" class="waves-effect waves-dark">
                                     <span class="pcoded-micon"><i class="bi bi-box-seam"></i><b>D</b></span>

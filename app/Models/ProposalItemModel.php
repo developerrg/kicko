@@ -13,8 +13,8 @@ class ProposalItemModel extends Model
 
     protected $allowedFields = [
         'proposal_id', 'is_category',
-        'sl_no', 'description',
-        'qty', 'unit', 'texture_code', 'handle_type',
+        'sl_no', 'product_name', 'description',
+        'qty', 'unit', 'texture_code', 'accessories', 'handle_type',
         'cupboard_type', 'size', 'design_code', 'door_state', 'rate', 'amount', 'amount_text',
         'sort_order', 'status', 'created_at',
     ];
@@ -40,10 +40,12 @@ class ProposalItemModel extends Model
                 'proposal_id' => $proposalId,
                 'is_category' => $isCat ? 1 : 0,
                 'sl_no'       => $isCat ? null : ($item['slNo'] ?? null),
+                'product_name' => $isCat ? null : ($item['productName'] ?? null),
                 'description' => $item['description'] ?? null,
                 'qty'          => $isCat ? null : ($item['qty']  ?? null),
                 'unit'         => $isCat ? null : ($item['unit'] ?? null),
                 'texture_code' => $isCat ? null : ($item['textureCode'] ?? null),
+                'accessories'  => $isCat || empty($item['accessories']) ? null : json_encode($item['accessories'], JSON_UNESCAPED_UNICODE),
                 'handle_type'  => $isCat ? null : ($item['handleType']  ?? null),
                 'cupboard_type' => $isCat ? null : ($item['cupboardType'] ?? null),
                 'size'          => $isCat ? null : ($item['size']         ?? null),

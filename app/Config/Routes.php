@@ -114,6 +114,15 @@ $routes->post('admin/category/save', 'Admin\Category::saveCategory');
 $routes->post('admin/category/status', 'Admin\Category::changeStatus');
 $routes->post('admin/category/delete/(:any)', 'Admin\Category::deleteCategory/$1');
 
+//Accessory
+$routes->get('admin/accessory', 'Admin\Accessory::index');
+$routes->post('admin/accessory/List', 'Admin\Accessory::ajaxList');
+$routes->get('admin/accessory/add', 'Admin\Accessory::addAccessory');
+$routes->get('admin/accessory/edit/(:num)', 'Admin\Accessory::addAccessory/$1');
+$routes->post('admin/accessory/save', 'Admin\Accessory::saveAccessory');
+$routes->post('admin/accessory/status', 'Admin\Accessory::changeStatus');
+$routes->post('admin/accessory/delete/(:any)', 'Admin\Accessory::deleteAccessory/$1');
+
 //Subcategory
 $routes->get('admin/subcategory', 'Admin\Subcategory::index');
 $routes->post('admin/subcategory/List', 'Admin\Subcategory::ajaxList');
