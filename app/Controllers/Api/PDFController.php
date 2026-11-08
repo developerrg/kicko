@@ -208,9 +208,10 @@ class PDFController extends BaseController
                 }
                 // Accessories: any count > 0 adds (count × accessory price) to the unit rate
                 $accessoryTotal = 0.0;
+                $itemLower      = array_change_key_case($item, CASE_LOWER);
                 $accessoryList  = [];
                 foreach ($accessories as $acc) {
-                    $accCount = $item[$acc['acc_Key'] . 'Count'] ?? null;
+                    $accCount = $this->accessoryCount($itemLower, $acc);
                     if ($accCount === null || !is_numeric($accCount) || (float)$accCount <= 0) {
                         continue;
                     }
@@ -418,6 +419,25 @@ class PDFController extends BaseController
                 ...($isDev ? ['trace' => $e->getFile() . ':' . $e->getLine()] : []),
             ]);
         }
+    }
+
+    /**
+     * Count for an accessory from the (lower-cased) item fields. The field is "<name>Count",
+     * matched case-insensitively against both the stored key and the current accessory name:
+     * "Top Door" accepts topDoorCount / topdoorCount (and the stored key, if it differs).
+     */
+    private function accessoryCount(array $itemLower, array $acc)
+    {
+        $names = [
+            strtolower($acc['acc_Key']),
+            strtolower(preg_replace('/[^a-zA-Z0-9]+/', '', (string)$acc['acc_Name'])),
+        ];
+        foreach ($names as $n) {
+            if ($n !== '' && array_key_exists($n . 'count', $itemLower)) {
+                return $itemLower[$n . 'count'];
+            }
+        }
+        return null;
     }
 
     /** 1234.5 → "Rupees One Thousand Two Hundred Thirty Four and Fifty Paise Only" (Indian grouping). */
