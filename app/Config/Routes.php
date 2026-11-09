@@ -230,6 +230,7 @@ $routes->post('api/createaccount','Api\Auth::registerUser');
 
 
 $routes->post('api/generatePDF',    'Api\PDFController::generate');
+$routes->get('pdf/download/(:segment)', 'PdfFile::download/$1');
 $routes->get('view360/(:num)',      'View360Controller::index/$1');
 
 // Products API

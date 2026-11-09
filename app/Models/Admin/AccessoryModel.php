@@ -32,30 +32,17 @@ class AccessoryModel extends Model
     /** Active accessories used for pricing in generatePDF. */
     public function getActiveAccessories(): array
     {
-        return $this->db->table('accessory')->where('acc_Status', 1)->get()->getResultArray();
+        return $this->db->table('accessory')->where('acc_Status', 1)->orderBy('acc_Id', 'ASC')->get()->getResultArray();
     }
 
-    /**
-     * Build a unique camelCase key from the name: "Pull Out" => "pullOut".
-     * The API reads the count from item field "<key>Count" (e.g. pullOutCount).
-     */
-    public function generateKey(string $name): string
+    /** Next auto accessory code: AC01, AC02, ... (deleted accessories keep their number reserved). */
+    public function nextAccessoryCode(string $prefix = 'AC', int $width = 2): string
     {
-        $words = preg_split('/[^a-zA-Z0-9]+/', strtolower($name), -1, PREG_SPLIT_NO_EMPTY);
-        $key   = '';
-        foreach ($words as $i => $w) {
-            $key .= $i === 0 ? $w : ucfirst($w);
-        }
-        if ($key === '' || ctype_digit($key[0])) {
-            $key = 'acc' . ucfirst($key);
-        }
-
-        $base = $key;
-        $n    = 2;
-        while ($this->db->table('accessory')->where('acc_Key', $key)->countAllResults() > 0) {
-            $key = $base . $n++;
-        }
-        return $key;
+        $row = $this->db->query(
+            'SELECT MAX(CAST(SUBSTRING(acc_Code, ?) AS UNSIGNED)) AS n FROM accessory WHERE acc_Code REGEXP ?',
+            [strlen($prefix) + 1, '^' . $prefix . '[0-9]+$']
+        )->getRow();
+        return $prefix . str_pad((string)(((int)($row->n ?? 0)) + 1), $width, '0', STR_PAD_LEFT);
     }
 
     public function accessoryInsert($data)
@@ -90,7 +77,10 @@ class AccessoryModel extends Model
     {
         if ($searchValue !== '') {
             $escaped = $this->db->escapeLikeString($searchValue);
-            $builder->where("REPLACE(REPLACE(a.acc_Name, ' ', ''), '\t', '') LIKE '%$escaped%'", null, false);
+            $builder->groupStart()
+                ->where("REPLACE(REPLACE(a.acc_Name, ' ', ''), '\t', '') LIKE '%$escaped%'", null, false)
+                ->orWhere("a.acc_Code LIKE '%$escaped%'", null, false)
+                ->groupEnd();
         }
     }
 
@@ -107,10 +97,12 @@ class AccessoryModel extends Model
             $builder->limit((int)$postData['length'], (int)($postData['start'] ?? 0));
         }
 
-        $columns = ['a.acc_Id', 'a.acc_Name', 'a.acc_Key', 'a.acc_Price', 'a.acc_Status'];
-        if (!empty($postData['order']) && isset($columns[$postData['order'][0]['column']])) {
+        // DataTables column index => sortable column (0 Slno and 5 Action are not sortable)
+        $columns = [1 => 'a.acc_Code', 2 => 'a.acc_Name', 3 => 'a.acc_Price', 4 => 'a.acc_Status'];
+        $col = (int)($postData['order'][0]['column'] ?? -1);
+        if (!empty($postData['order']) && isset($columns[$col])) {
             $dir = strtolower($postData['order'][0]['dir']) === 'asc' ? 'ASC' : 'DESC';
-            $builder->orderBy($columns[$postData['order'][0]['column']], $dir);
+            $builder->orderBy($columns[$col], $dir);
         } else {
             $builder->orderBy('a.acc_Id', 'DESC');
         }

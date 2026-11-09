@@ -37,7 +37,7 @@ class ProductModel extends Model
     {
         $builder = $this->db->table('product');
         $builder->where('pr_Code', $product_code);
-        $builder->where('pr_Status !=', 3);
+        // Deleted products count too: pr_Code has a unique index, so a deleted product still reserves its code
 
         if ($excludeId) {
             $builder->where('pr_Id !=', $excludeId);
@@ -73,6 +73,23 @@ class ProductModel extends Model
             ->getRow();
     }
 
+
+    /**
+     * Next auto product code: CB01, CB02, ... (highest existing CB number + 1, deleted products
+     * included because their codes stay reserved by the unique index). Two digits minimum.
+     */
+    public function nextProductCode(string $prefix = 'CB', int $width = 2): string
+    {
+        $len = strlen($prefix);
+        $row = $this->db->query(
+            "SELECT MAX(CAST(SUBSTRING(pr_Code, ?) AS UNSIGNED)) AS n
+               FROM product
+              WHERE pr_Code REGEXP ?",
+            [$len + 1, '^' . $prefix . '[0-9]+$']
+        )->getRow();
+        $next = ((int)($row->n ?? 0)) + 1;
+        return $prefix . str_pad((string)$next, $width, '0', STR_PAD_LEFT);
+    }
 
     public function productInsert($data){
         $data['pr_modifyon'] = date('Y-m-d H:i:s'); 
@@ -206,12 +223,14 @@ class ProductModel extends Model
 
             $builder->groupStart()
                 ->where("REPLACE(REPLACE(p.pr_Name, ' ', ''), CHAR(9), '') LIKE '%$escaped%'", null, false)
+                ->orWhere("REPLACE(REPLACE(p.pr_Code, ' ', ''), CHAR(9), '') LIKE '%$escaped%'", null, false)
                 ->groupEnd();
         }
         if (!empty($postData['order'])) {
-            $columns = ['pr_Name', 'mrp', 'pr_Selling_Price', 'pr_Discount_Value', 'pr_Stock', 'pr_Status'];
-            $orderColIndex = $postData['order'][0]['column'];
-            $orderDir = $postData['order'][0]['dir'];
+            // keys = DataTables column index (0 Slno, 7 Image and 9 Action are not sortable)
+            $columns = [1 => 'pr_Name', 2 => 'pr_Code', 3 => 'mrp', 4 => 'pr_Selling_Price', 5 => 'pr_Discount_Value', 6 => 'pr_Stock', 8 => 'pr_Status'];
+            $orderColIndex = (int)$postData['order'][0]['column'];
+            $orderDir = strtolower($postData['order'][0]['dir']) === 'asc' ? 'ASC' : 'DESC';
             $orderCol = $columns[$orderColIndex] ?? 'pr_modifyon';
             $builder->orderBy("p.$orderCol", $orderDir);
         } else {
@@ -245,6 +264,7 @@ class ProductModel extends Model
 
             $builder->groupStart()
                 ->where("REPLACE(REPLACE(p.pr_Name, ' ', ''), CHAR(9), '') LIKE '%$escaped%'", null, false)
+                ->orWhere("REPLACE(REPLACE(p.pr_Code, ' ', ''), CHAR(9), '') LIKE '%$escaped%'", null, false)
                 ->groupEnd();
         }
 

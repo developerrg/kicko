@@ -29,8 +29,11 @@
                     <!-- Back + PDF download -->
                     <div class="row mb-3">
                         <div class="col d-flex gap-2 justify-content-end align-items-center">
-                            <a id="pdfDownloadBtn" href="#" target="_blank" class="btn btn-success d-none">
-                                <i class="bi bi-file-earmark-pdf"></i> Download PDF
+                            <a id="pdfViewBtn" href="#" target="_blank" rel="noopener" class="btn btn-outline-success d-none">
+                                <i class="bi bi-eye"></i> View PDF
+                            </a>
+                            <a id="pdfDownloadBtn" href="#" class="btn btn-success d-none">
+                                <i class="bi bi-download"></i> Download PDF
                             </a>
                             <a href="<?= base_url('admin/estimates') ?>" class="btn btn-secondary">
                                 <i class="bi bi-arrow-left"></i> Back to list
@@ -97,7 +100,6 @@
                                                 <th>Size (cm)</th>
                                                 <th>Design</th>
                                                 <th>Texture</th>
-                                                <th>Accessories</th>
                                                 <th>Qty</th>
                                                 <th>Unit</th>
                                                 <th class="text-end">Rate (Rs.)</th>
@@ -148,8 +150,8 @@
 #paidBadge.visible-el   { display: inline-block !important; }
 #markPaidBtn.visible-el { display: inline-block !important; }
 /* PDF download button */
-#pdfDownloadBtn.d-none { display: none !important; }
-#pdfDownloadBtn:not(.d-none) { display: inline-flex !important; align-items: center; gap: 6px; }
+#pdfDownloadBtn.d-none, #pdfViewBtn.d-none { display: none !important; }
+#pdfDownloadBtn:not(.d-none), #pdfViewBtn:not(.d-none) { display: inline-flex !important; align-items: center; gap: 6px; }
 </style>
 
                 </div>

@@ -46,6 +46,7 @@
                                                     <thead>
                                                         <tr>
                                                             <th>Slno</th>
+                                                            <th>Code</th>
                                                             <th>Accessory Name</th>
                                                             <th>Price</th>
                                                             <th>Status</th>

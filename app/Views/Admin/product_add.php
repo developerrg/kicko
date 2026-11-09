@@ -56,9 +56,15 @@
                                                     style="color: red;">*</span></label>
                                             <div class="col-sm-7">
                                                 <input type="text" class="form-control" name="product_code"
-                                                    id="productCode"
-                                                    value="<?= isset($product) ? ($product['pr_Code']) : '' ?>"
-                                                    placeholder="Enter the Product Code">
+                                                    id="productCode" readonly tabindex="-1" autocomplete="off"
+                                                    style="background-color:#eef1f5; cursor:not-allowed;"
+                                                    value="<?= isset($product) && !empty($product['pr_Code']) ? esc($product['pr_Code']) : esc($next_code ?? '') ?>"
+                                                    placeholder="Generated automatically">
+                                                <small class="form-text text-muted">
+                                                    <?= (isset($product) && !empty($product['pr_Code']))
+                                                        ? 'Generated automatically - cannot be changed.'
+                                                        : 'Generated automatically when the product is saved - cannot be edited.' ?>
+                                                </small>
                                             </div>
                                         </div>
                                         <div class="form-group row">

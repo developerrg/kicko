@@ -65,6 +65,7 @@
                                                         <tr>
                                                             <th>Slno</th>
                                                             <th>Name</th>
+                                                            <th>Code</th>
                                                             <th>MRP</th>
                                                             <th>Selling Price</th>
                                                             <!-- <th>Discount Type</th> -->

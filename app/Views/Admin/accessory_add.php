@@ -30,6 +30,16 @@
                                 <div class="card-block">
                                     <form name="createAccessory" id="createAccessory" method="post">
                                         <div class="form-group row">
+                                            <label class="col-sm-2 col-form-label">Accessory Code</label>
+                                            <div class="col-sm-6">
+                                                <input type="text" class="form-control" id="accessoryCode" readonly tabindex="-1"
+                                                    style="background-color:#eef1f5; cursor:not-allowed;"
+                                                    value="<?= isset($accessory) ? esc($accessory['acc_Code']) : esc($next_code ?? '') ?>"
+                                                    placeholder="Generated automatically">
+                                                <small class="form-text text-muted">Generated automatically - cannot be edited. Use it in the generatePDF payload.</small>
+                                            </div>
+                                        </div>
+                                        <div class="form-group row">
                                             <label class="col-sm-2 col-form-label">Accessory Name <span style="color: red;">*</span></label>
                                             <div class="col-sm-6">
                                                 <input type="text" name="accessory_name" id="accessoryName" class="form-control"

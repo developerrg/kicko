@@ -15,6 +15,7 @@ $(document).ready(function () {
             },
             columns: [
                 { data: null, render: function (d, t, r, meta) { return meta.row + meta.settings._iDisplayStart + 1; } },
+                { data: 'acc_Code', render: function (data) { return data ? $('<div>').text(data).html() : '-'; } },
                 { data: 'acc_Name', render: function (data) {
                     var s = $('<div>').text(data).html();
                     return data.length > 30 ? '<span title="' + s + '">' + $('<div>').text(data.substring(0, 30)).html() + '...</span>' : s;
@@ -23,7 +24,7 @@ $(document).ready(function () {
                 { data: 'status_switch' },
                 { data: 'actions' }
             ],
-            columnDefs: [{ targets: [0, 3, 4], orderable: false, searchable: false }]
+            columnDefs: [{ targets: [0, 5], orderable: false, searchable: false }, { targets: 4, orderable: true, searchable: false }]
         });
     }
 });

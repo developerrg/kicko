@@ -24,7 +24,7 @@ class PDFController extends BaseController
             // Three accepted formats:
             //   A) Raw JSON body                  → Content-Type: application/json
             //   B) Multipart + `payload` JSON str → single field with full JSON
-            //   C) Multipart flat fields           → customerDetails[name], items[0][productId], ...
+            //   C) Multipart flat fields           → customerDetails[name], items[0][productCode], ...
             $contentType = $this->request->getHeaderLine('Content-Type');
             $isMultipart = str_contains($contentType, 'multipart/form-data');
 
@@ -120,30 +120,37 @@ class PDFController extends BaseController
             $db = \Config\Database::connect();
             foreach ($items as $item) {
                 $item = (array)$item;
-                if (!empty($item['productId']) && is_numeric($item['productId'])) {
-                    $pid = (int)$item['productId'];
-                    if (!isset($productCache[$pid])) {
+                $code = trim((string)($item['productCode'] ?? ''));
+                if ($code !== '') {
+                    $ckey = strtolower($code);
+                    if (!array_key_exists($ckey, $productCache)) {
                         $row = $db->table('product p')
                                   ->select('p.pr_Id, p.pr_Name, p.pr_Code, p.pr_Description, p.pr_Selling_Price, p.mrp, '
                                          . 'c.cat_Name, s.sub_Category_Name')
                                   ->join('category c', 'c.cat_Id = p.cat_Id', 'left')
                                   ->join('subcategory s', 's.sub_Id = p.sub_Id', 'left')
-                                  ->where('p.pr_Id', $pid)
+                                  ->where('p.pr_Code', $code)
                                   ->where('p.pr_Status !=', 3)
                                   ->get()->getRowArray();
-                        $productCache[$pid] = $row ?: null;
+                        $productCache[$ckey] = $row ?: null;
                     }
                 }
             }
 
-            // Active accessories (door, drawer, ...). Item field "<acc_Key>Count" holds the count.
+            // Active accessories by code (AC01, ...). Each item may carry "accessories": {"AC01": 2, ...}
             $accessories = (new \App\Models\Admin\AccessoryModel())->getActiveAccessories();
+            $accByCode   = [];
+            foreach ($accessories as $a) {
+                $accByCode[strtoupper((string)$a['acc_Code'])] = $a;
+            }
 
             // ── Map payload items → PDF rows ───────────────────────────────────
             $pdfItems     = [];
             $autoSubTotal = 0.0;
             $itemErrors   = [];
             $slNo         = 0;
+            $accTotals    = []; // acc_Id => total quantity over all products
+            $accBreakdown = []; // acc_Id => [[product name, count per unit, product qty], ...]
 
             foreach ($items as $i => $item) {
                 if (!is_object($item) && !is_array($item)) {
@@ -159,13 +166,15 @@ class PDFController extends BaseController
                     continue;
                 }
 
-                // productId and quantity are mandatory; everything priced comes from the DB
-                $product = null;
-                if (!empty($item['productId']) && is_numeric($item['productId'])) {
-                    $product = $productCache[(int)$item['productId']] ?? null;
+                // productCode and quantity are mandatory; everything priced comes from the DB
+                $code = trim((string)($item['productCode'] ?? ''));
+                if ($code === '') {
+                    $itemErrors["items[$i].productCode"] = 'productCode is required';
+                    continue;
                 }
+                $product = $productCache[strtolower($code)] ?? null;
                 if (!$product) {
-                    $itemErrors["items[$i].productId"] = 'Product not found';
+                    $itemErrors["items[$i].productCode"] = "Product not found for code '{$code}'";
                     continue;
                 }
                 $rawQty = $item['quantity'] ?? $item['qty'] ?? null;
@@ -174,7 +183,7 @@ class PDFController extends BaseController
                     continue;
                 }
                 if (!is_numeric($product['pr_Selling_Price'])) {
-                    $itemErrors["items[$i].productId"] = 'Product has no selling price';
+                    $itemErrors["items[$i].productCode"] = "Product '{$code}' has no selling price";
                     continue;
                 }
 
@@ -206,38 +215,22 @@ class PDFController extends BaseController
                 if (!empty($item['textureCode'])) {
                     $extras[] = $item['textureCode'];
                 }
-                // Accessories: any count > 0 adds (count × accessory price) to the unit rate
-                $accessoryTotal = 0.0;
-                $itemLower      = array_change_key_case($item, CASE_LOWER);
-                $accessoryList  = [];
-                foreach ($accessories as $acc) {
-                    $accCount = $this->accessoryCount($itemLower, $acc);
-                    if ($accCount === null || !is_numeric($accCount) || (float)$accCount <= 0) {
-                        continue;
-                    }
-                    $accCount        = (float)$accCount;
-                    $accessoryTotal += $accCount * (float)$acc['acc_Price'];
-                    $accCountLabel   = floor($accCount) == $accCount ? (int)$accCount : $accCount;
-                    $extras[]        = $accCountLabel . ' ' . $acc['acc_Name'];
-                    $accessoryList[] = ['name' => $acc['acc_Name'], 'count' => $accCountLabel, 'price' => (float)$acc['acc_Price']];
-                }
-
                 if ($extras) {
                     $desc .= ($desc !== '' ? ' | ' : '') . implode(' | ', $extras);
                 }
 
-                // Rate is never taken from the client: DB selling price + accessories
-                $rate   = round((float)$product['pr_Selling_Price'] + $accessoryTotal, 2);
+                // Rate is never taken from the client: DB selling price only (accessories are priced separately below).
+                $rate   = round((float)$product['pr_Selling_Price'], 2);
                 $qty    = (float)$rawQty;
                 $amount = round($rate * $qty, 2);
                 $autoSubTotal += $amount;
 
+                $itemNo = ++$slNo;
                 $pdfItems[] = [
                     'isCategory'  => false,
-                    'slNo'        => (string)(++$slNo),
+                    'slNo'        => (string)$itemNo,
                     'productName' => $productName,
                     'description' => $desc,
-                    'accessories' => $accessoryList,
                     'qty'         => $qty,
                     'unit'        => $item['unit'] ?? 'Nos',
                     'textureCode' => isset($item['textureCode']) && $item['textureCode'] !== '' ? (string)$item['textureCode'] : null,
@@ -247,6 +240,52 @@ class PDFController extends BaseController
                     'rate'      => $rate,
                     'amount'      => $amount,
                 ];
+
+                // Accessories: {"AC01": 2, "AC02": 1} (or [{"code":"AC01","count":2}]). Counts > 0 are added to the
+                // estimate-wide accessory totals, listed together after all products. Unknown codes are errors.
+                foreach ($this->parseAccessoryCounts($item['accessories'] ?? null, "items[$i].accessories", $itemErrors) as $accCode => $accCount) {
+                    $acc = $accByCode[$accCode] ?? null;
+                    if (!$acc) {
+                        $itemErrors["items[$i].accessories.$accCode"] = "Accessory not found for code '{$accCode}' (or it is inactive)";
+                        continue;
+                    }
+                    $accTotals[$acc['acc_Id']] = ($accTotals[$acc['acc_Id']] ?? 0.0) + $accCount * $qty;
+                    $accBreakdown[$acc['acc_Id']][] = [$productName, $accCount, $qty];
+                }
+            }
+
+            // ── Accessories section: one row per accessory, quantity summed over all products ──
+            if (empty($itemErrors) && !empty($accTotals)) {
+                $pdfItems[] = ['isCategory' => true, 'description' => 'Accessories'];
+                foreach ($accessories as $acc) {
+                    if (!isset($accTotals[$acc['acc_Id']])) {
+                        continue;
+                    }
+                    $accQty    = round($accTotals[$acc['acc_Id']], 2);
+                    $accRate   = round((float)$acc['acc_Price'], 2);
+                    $accAmount = round($accQty * $accRate, 2);
+                    $autoSubTotal += $accAmount;
+
+                    // Description = accessory name, then one line per product it is used on:
+                    //   "Door\n120 Top: 3 x 2 = 6\n90 Top: 4 x 1 = 4"   (count per unit x product quantity = total)
+                    $accDesc = $acc['acc_Name'];
+                    foreach ($accBreakdown[$acc['acc_Id']] ?? [] as [$pName, $perUnit, $pQty]) {
+                        $accDesc .= "\n" . $pName . ': ' . $this->plainNumber($perUnit) . ' each x ' . $this->plainNumber($pQty)
+                                  . ' = ' . $this->plainNumber($perUnit * $pQty);
+                    }
+
+                    $pdfItems[] = [
+                        'isCategory'  => false,
+                        'isAccessory' => true,
+                        'slNo'        => (string)(++$slNo),
+                        'productName' => $acc['acc_Name'],
+                        'description' => $accDesc,
+                        'qty'         => $accQty,
+                        'unit'        => 'Nos',
+                        'rate'        => $accRate,
+                        'amount'      => $accAmount,
+                    ];
+                }
             }
 
             if (!empty($itemErrors)) {
@@ -400,7 +439,9 @@ class PDFController extends BaseController
                 'data'    => [
                     'proposalId'      => $proposalId,
                     'fileName'        => $pdfResult['fileName'],
-                    'downloadUrl'     => $pdfResult['downloadUrl'],
+                    // viewUrl opens the PDF in the browser; downloadUrl forces a file download
+                    'viewUrl'         => $pdfResult['downloadUrl'],
+                    'downloadUrl'     => base_url('pdf/download/' . $pdfResult['fileName']),
                     'itemsCount'      => $pdfResult['itemsCount'],
                     'imagesCount'     => count($savedImages),
                     'images'          => $savedImages,
@@ -421,23 +462,57 @@ class PDFController extends BaseController
         }
     }
 
-    /**
-     * Count for an accessory from the (lower-cased) item fields. The field is "<name>Count",
-     * matched case-insensitively against both the stored key and the current accessory name:
-     * "Top Door" accepts topDoorCount / topdoorCount (and the stored key, if it differs).
-     */
-    private function accessoryCount(array $itemLower, array $acc)
+    /** 3.0 -> "3", 1.5 -> "1.5" */
+    private function plainNumber(float $v): string
     {
-        $names = [
-            strtolower($acc['acc_Key']),
-            strtolower(preg_replace('/[^a-zA-Z0-9]+/', '', (string)$acc['acc_Name'])),
-        ];
-        foreach ($names as $n) {
-            if ($n !== '' && array_key_exists($n . 'count', $itemLower)) {
-                return $itemLower[$n . 'count'];
+        return rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.');
+    }
+
+    /**
+     * Normalises an item's accessories into [CODE => count] (counts > 0 only).
+     * Accepts {"AC01": 2, "ac02": 1} or [{"code": "AC01", "count": 2}]; invalid counts add an error.
+     */
+    private function parseAccessoryCounts($raw, string $path, array &$errors): array
+    {
+        if ($raw === null || $raw === '' || $raw === []) {
+            return [];
+        }
+        if (is_object($raw)) {
+            $raw = (array)$raw;
+        }
+        if (!is_array($raw)) {
+            $errors[$path] = 'accessories must be an object like {"AC01": 2}';
+            return [];
+        }
+
+        $pairs = [];
+        foreach ($raw as $k => $v) {
+            if (is_object($v)) {
+                $v = (array)$v;
+            }
+            if (is_array($v)) {                       // list form: {"code": "AC01", "count": 2}
+                $pairs[] = [$v['code'] ?? '', $v['count'] ?? null, "$path.$k"];
+            } else {                                  // map form: "AC01": 2
+                $pairs[] = [$k, $v, "$path.$k"];
             }
         }
-        return null;
+
+        $out = [];
+        foreach ($pairs as [$code, $count, $where]) {
+            $code = strtoupper(trim((string)$code));
+            if ($code === '') {
+                $errors[$where] = 'Accessory code is required';
+                continue;
+            }
+            if (!is_numeric($count) || (float)$count < 0) {
+                $errors["$path.$code"] = 'Accessory count must be a number of 0 or more';
+                continue;
+            }
+            if ((float)$count > 0) {
+                $out[$code] = ($out[$code] ?? 0.0) + (float)$count;
+            }
+        }
+        return $out;
     }
 
     /** 1234.5 → "Rupees One Thousand Two Hundred Thirty Four and Fifty Paise Only" (Indian grouping). */

@@ -17,17 +17,21 @@ function formatIndian(num) {
     return (n < 0 ? '-' : '') + rest + ',' + last3 + (dec ? '.' + dec : '');
 }
 
-// accessories: JSON text [{name,count}] - show only counts > 0
-function accessoriesHtml(raw) {
-    var list = [];
-    try { list = raw ? JSON.parse(raw) : []; } catch (e) { list = []; }
-    var out = [];
-    $.each(list, function (i, a) {
-        if (a && parseFloat(a.count) > 0) {
-            out.push('<span class="badge bg-info text-dark me-1">' + esc(a.name) + ': ' + esc(a.count) + '</span>');
+// Product-name cell. Accessory rows also list the products they are used on
+// (stored as extra lines in the description: "120 Top: 3 x 2 = 6").
+function nameCell(row) {
+    var name = row.product_name || String(row.description || '').split(' | ')[0];
+    var html = esc(name);
+    if (row.is_accessory == 1) {
+        var lines = String(row.description || '').split('\n').slice(1);
+        if (lines.length) {
+            html = '<strong>' + esc(name) + '</strong>';
+            $.each(lines, function (i, ln) {
+                html += '<div class="small text-muted" style="white-space:nowrap;">&#8627; ' + $('<div>').text(ln).html() + '</div>';
+            });
         }
-    });
-    return out.join(' ');
+    }
+    return html;
 }
 
 function esc(v) {
@@ -81,7 +85,9 @@ $(document).ready(function () {
 
             // PDF button
             if (p.pdf_url) {
-                $('#pdfDownloadBtn').attr('href', p.pdf_url).removeClass('d-none');
+                var pdfFile = p.pdf_file_name || String(p.pdf_url).split('/').pop();
+                $('#pdfViewBtn').attr('href', p.pdf_url).removeClass('d-none');                        // opens in the browser
+                $('#pdfDownloadBtn').attr('href', baseUrl + 'pdf/download/' + encodeURIComponent(pdfFile)).removeClass('d-none'); // forces download
             }
 
             // Paid status
@@ -98,13 +104,13 @@ $(document).ready(function () {
             var tbody = $('#itemsTbody');
             tbody.empty();
             if (!it || it.length === 0) {
-                tbody.append('<tr><td colspan="11" class="text-center text-muted">No items found</td></tr>');
+                tbody.append('<tr><td colspan="10" class="text-center text-muted">No items found</td></tr>');
             } else {
                 $.each(it, function (i, row) {
                     if (row.is_category == 1 || row.is_category === true) {
                         tbody.append(
                             '<tr class="table-secondary">'
-                          + '<td colspan="11"><strong>' + (row.description || '') + '</strong></td>'
+                          + '<td colspan="10"><strong>' + (row.description || '') + '</strong></td>'
                           + '</tr>'
                         );
                     } else {
@@ -118,12 +124,11 @@ $(document).ready(function () {
                         tbody.append(
                             '<tr>'
                           + '<td>' + (row.sl_no || '') + '</td>'
-                          + '<td>' + esc(row.product_name || String(row.description || '').split(' | ')[0]) + '</td>'
+                          + '<td>' + nameCell(row) + '</td>'
                           + '<td>' + esc(humanizeType(row.cupboard_type)) + '</td>'
                           + '<td class="text-center">' + esc(row.size) + '</td>'
                           + '<td class="text-center">' + esc(row.design_code) + '</td>'
                           + '<td>' + esc(row.texture_code) + '</td>'
-                          + '<td>' + accessoriesHtml(row.accessories) + '</td>'
                           + '<td class="text-center">' + (row.qty !== null ? row.qty : '') + '</td>'
                           + '<td class="text-center">' + (row.unit || '') + '</td>'
                           + '<td class="text-end">' + (row.rate !== null ? formatIndian(row.rate) : '') + '</td>'

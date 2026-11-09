@@ -40,7 +40,7 @@ class Accessory extends BaseController
             return redirect()->to(base_url('admin/accessory'));
         }
 
-        $data = [];
+        $data = ['next_code' => $this->accessoryModel->nextAccessoryCode()]; // preview only
         if ($acc_id) {
             $acc = $this->accessoryModel->getAccessoryById($acc_id);
             if (!$acc) {
@@ -57,7 +57,7 @@ class Accessory extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'Session expired.']);
         }
 
-        $acc_id = $this->input->getPost('acc_id');
+        $acc_id = $this->input->getPost('acc_id'); // the code is never read from the form
         $name   = ucwords(strtolower(trim((string)$this->input->getPost('accessory_name'))));
         $price  = trim((string)$this->input->getPost('price'));
 
@@ -81,24 +81,46 @@ class Accessory extends BaseController
         $uid = $this->session->get('ad_uid');
 
         if (empty($acc_id)) {
-            $this->accessoryModel->accessoryInsert([
+            // Code is generated here (AC01, AC02, ...). If two admins save at the same moment the
+            // unique index rejects the second insert, so take the next number and try again.
+            $row = [
                 'acc_Name'      => $name,
-                'acc_Key'       => $this->accessoryModel->generateKey($name),
                 'acc_Price'     => round((float)$price, 2),
                 'acc_Status'    => 1,
                 'acc_createdon' => date('Y-m-d H:i:s'),
                 'acc_createdby' => $uid,
                 'acc_modifyon'  => date('Y-m-d H:i:s'),
                 'acc_modifyby'  => $uid,
+            ];
+            $saved = false;
+            for ($attempt = 0; $attempt < 5 && !$saved; $attempt++) {
+                $row['acc_Code'] = $this->accessoryModel->nextAccessoryCode();
+                try {
+                    $saved = (bool)$this->accessoryModel->accessoryInsert($row);
+                    if (!$saved) {
+                        break;
+                    }
+                } catch (\Throwable $e) {
+                    if (stripos($e->getMessage(), 'Duplicate entry') === false) {
+                        throw $e;
+                    }
+                }
+            }
+            if (!$saved) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Could not save the accessory. Please try again.']);
+            }
+            return $this->response->setJSON([
+                'status' => 1,
+                'msg'    => 'Accessory Created Successfully. Code: ' . $row['acc_Code'],
+                'acc_code' => $row['acc_Code'],
             ]);
-            return $this->response->setJSON(['status' => 1, 'msg' => 'Accessory Created Successfully.']);
         }
 
         if (!$this->accessoryModel->getAccessoryById($acc_id)) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Accessory Not Found.']);
         }
 
-        // acc_Key is intentionally not changed on edit so the API field name stays stable.
+        // The code is never changed on edit (apps reference it).
         $this->accessoryModel->updateAccessory($acc_id, [
             'acc_Name'     => $name,
             'acc_Price'    => round((float)$price, 2),

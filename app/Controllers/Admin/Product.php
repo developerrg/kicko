@@ -136,6 +136,7 @@ class Product extends BaseController
 
         $data = [];
         $data['categories'] = $this->productModel->getAllCategories();
+        $data['next_code']  = $this->productModel->nextProductCode(); // preview only; final code is assigned on save
 
         if ($pr_id) {
             $product = $this->productModel->getProductByid($pr_id);
@@ -176,7 +177,13 @@ class Product extends BaseController
         $cat_id = $this->input->getPost('cat_id');
         $product_name = trim($this->input->getPost('product_name'));
         $product_name = ucwords(strtolower(trim($product_name)));
-        $product_code = trim($this->request->getPost('product_code')); // ✅ CodeIgniter 4
+        // Product code is system-generated (CB01, CB02, ...) and is never taken from the form:
+        // new product -> next free code at save time; existing product -> keeps its stored code.
+        $existingProduct = !empty($pr_id) ? $this->productModel->getProductByid($pr_id) : null;
+        if (!empty($pr_id) && !$existingProduct) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Product Not Found.']);
+        }
+        $product_code = $existingProduct ? trim((string)$existingProduct->pr_Code) : '';
 
         $product_description = $this->input->getPost('product_description');
 
@@ -199,7 +206,7 @@ class Product extends BaseController
         
         $DisCountFrom = 0;     
         
-        if (empty($cat_id) || empty($product_name) || empty($product_code) || empty($product_stock) || empty($reset_stock) || empty($mrp)) {
+        if (empty($cat_id) || empty($product_name) || empty($product_stock) || empty($reset_stock) || empty($mrp)) {
             return $this->response->setJSON([
                 'status' => 'error',
                 'message' => 'All Required Fields Must Be Filled.'
@@ -210,13 +217,6 @@ class Product extends BaseController
         'status' => 'error',
         'field' => 'product_name',
         'message' => 'Invalid Product Name.'
-    ]);
-}
-if (!preg_match('/^[a-zA-Z0-9 _\-()\/\\\\]+$/', $product_code)) {
-    return $this->response->setJSON([
-        'status' => 'error',
-        'field' => 'product_code',
-        'message' => 'Invalid Product Code'
     ]);
 }
 if(!empty($product_description)) {
@@ -260,15 +260,6 @@ if (!preg_match('/^[0-9]+$/', $discount_value)) {
                 'status' => 'error',
                 'field' => 'product_name',
                 'message' => 'Product Name Already Exists.'
-            ]);
-        }
-
-        // Check if product code already exists (excluding current ID)
-        if ($this->productModel->isProductCodeExists($product_code, $pr_id)) {
-            return $this->response->setJSON([
-                'status' => 'error',
-                'field' => 'pr_Code',
-                'message' => 'Product Code Already Exists.'
             ]);
         }
 
@@ -339,11 +330,29 @@ if (!preg_match('/^[0-9]+$/', $discount_value)) {
             $data['pr_createdon'] = date("Y-m-d H:i:s");
             $data['pr_createdby'] = $this->session->get('ad_uid');
 
-            if ($this->productModel->productInsert($data)) {
+            // Assign the next free code; if two admins save at the same moment the unique index
+            // rejects the second insert, so take the next number and try again.
+            $inserted = false;
+            for ($attempt = 0; $attempt < 5 && !$inserted; $attempt++) {
+                $data['pr_Code'] = $this->productModel->nextProductCode();
+                try {
+                    $inserted = (bool)$this->productModel->productInsert($data);
+                    if (!$inserted) {
+                        break;
+                    }
+                } catch (\Throwable $e) {
+                    if (stripos($e->getMessage(), 'Duplicate entry') === false) {
+                        throw $e;
+                    }
+                }
+            }
+
+            if ($inserted) {
 
                 return $this->response->setJSON([
                     'status' => 1,
-                    'msg' => 'Product Created Successfully.',
+                    'msg' => 'Product Created Successfully. Code: ' . $data['pr_Code'],
+                    'product_code' => $data['pr_Code'],
                     'redirect' => base_url('admin/product')
                 ]);
             } else {
@@ -353,6 +362,9 @@ if (!preg_match('/^[0-9]+$/', $discount_value)) {
                 ]);
             }
         } else {
+            if ($product_code === '') {
+                $data['pr_Code'] = $this->productModel->nextProductCode(); // older product that never had a code
+            }
             if ($this->productModel->updateProduct($pr_id, $data)) {
 
                 return $this->response->setJSON([

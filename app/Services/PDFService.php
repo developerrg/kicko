@@ -145,7 +145,8 @@ class PDFService
             'fileName'        => $fileName,
             'downloadUrl'     => base_url('uploads/' . $fileName),
             'filePath'        => $filePath,
-            'itemsCount'      => count($validatedItems),
+            // accessory sub-rows belong to their item, so they are not counted as separate items
+            'itemsCount'      => count(array_filter($validatedItems, static fn($r) => empty($r['isAccessory']) && empty($r['isCategory']))), // products only
             'customerDetails' => $customerDetails,
             'generatedAt'     => date('Y-m-d H:i:s'),
         ];
@@ -662,6 +663,7 @@ class PDFService
 
             $out = [
                 'isCategory'  => false,
+                'isAccessory' => !empty($item['isAccessory']),
                 'slNo'        => isset($item['slNo'])  ? (string)$item['slNo']  : '',
                 'description' => trim((string)$item['description']),
                 'qty'         => null,

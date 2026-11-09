@@ -117,8 +117,11 @@ var table = $('#estimateList').DataTable({
             className: 'text-center',
             render: function (data) {
                 if (!data) return '<span class="text-muted">—</span>';
-                return '<a href="' + data + '" target="_blank" class="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1">'
-                     + '<i class="bi bi-file-earmark-pdf"></i></a>';
+                var file = String(data).split('/').pop();
+                return '<a href="' + data + '" target="_blank" rel="noopener" title="View PDF" class="btn btn-sm btn-outline-success d-inline-flex align-items-center me-1">'
+                     + '<i class="bi bi-eye"></i></a>'
+                     + '<a href="' + baseUrl + 'pdf/download/' + encodeURIComponent(file) + '" title="Download PDF" class="btn btn-sm btn-success d-inline-flex align-items-center">'
+                     + '<i class="bi bi-download"></i></a>';
             }
         },
         // 11 — Action

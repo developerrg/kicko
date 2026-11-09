@@ -30,6 +30,12 @@
                 }
             },
             {
+                data: 'pr_Code',
+                render: function (data, type, row) {
+                    return data ? $('<div>').text(data).html() : '<span class="text-muted">-</span>';
+                }
+            },
+            {
                 data: 'mrp'
             },
             {
@@ -56,12 +62,12 @@
         ],
         columnDefs: [
             {
-                targets: [6, 7, 8],
+                targets: [7, 8, 9],
                 orderable: false,
                 searchable: false
             },
             {
-                targets: 6,
+                targets: 7,
                 render: function (data, type, row) {
                     return data;
                 }
