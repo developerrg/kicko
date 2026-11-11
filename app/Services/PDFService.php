@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Libraries\DocxTermsRenderer;
 use TCPDF;
 
 class KicoPDF extends TCPDF
@@ -22,7 +23,7 @@ class KicoPDF extends TCPDF
         $this->SetY(-10);
         $this->SetFont('helvetica', '', 7);
         $this->SetTextColor(80, 80, 80);
-        $this->Cell(60, 5, 'For INSIDE Design..................', 0, 0, 'L');
+        $this->Cell(60, 5, 'For KICO..................', 0, 0, 'L');
         $this->Cell(60, 5, 'Page ' . $contentPage,             0, 0, 'C');
         $this->Cell(60, 5, 'For Customer.....................', 0, 1, 'R');
     }
@@ -37,12 +38,21 @@ class PDFService
     private const PAGE_W    = 210;
     private const PAGE_H    = 297;
     private const MARGIN    = 15;
+
+    /** Colour of every section header bar: PROPOSAL FOR INTERIOR WORKS, IMAGE PREVIEW and the terms headers. */
+    private const HEADER_RGB = [103, 82, 63];   // #67523f
+
+    /** Light tint of the header colour (25 % of it, 75 % white): table column headers and highlighted rows. */
+    private static function headerLite(): array
+    {
+        return array_map(static fn(int $c) => (int)round(255 - (255 - $c) * 0.25), self::HEADER_RGB);
+    }
     private const USABLE_W  = 180;  // 210 - 15 - 15
 
     public function __construct()
     {
-        $this->firstPageImage = FCPATH . 'public/images/50.jpg';
-        $this->lastPageImage  = FCPATH . 'public/images/51.jpg';
+        $this->firstPageImage = FCPATH . 'public/images/start.jpg';
+        $this->lastPageImage  = FCPATH . 'public/images/end.jpg';
     }
 
     public function setFirstPageImage(string $imagePath): self
@@ -68,7 +78,8 @@ class PDFService
         array $items,
         array $customerDetails = [],
         array $totals = [],
-        array $urls360 = []
+        array $urls360 = [],
+        array $images = []   // [['path' => abs file, 'is360' => bool, 'url' => 360 viewer url], ...]
     ): array {
         if (empty($items)) {
             throw new \Exception('Items array cannot be empty');
@@ -108,9 +119,15 @@ class PDFService
         if (!empty($totals)) {
             $this->addTotalsSection($pdf, $totals);
         }
-        if (!empty($urls360)) {
-            $this->add360LinksSection($pdf, $urls360);
+
+        // Uploaded images: small thumbnails, 360 images last (clickable, marked with a 360 badge)
+        $tmpFiles = [];
+        if (!empty($images)) {
+            $this->addImagePreviewSection($pdf, $images, $tmpFiles);
         }
+
+        // Terms & conditions: "kico terms.docx" printed fully on two dedicated pages
+        $this->addTermsPages($pdf);
 
         // Last page – back cover, no footer
         // AddPage() closes the last content page with printPageFooter=true (footer
@@ -127,13 +144,17 @@ class PDFService
             throw new \RuntimeException('Failed to create uploads directory: ' . $uploadsDir);
         }
 
-        $fileName = 'kitchen_export_' . time() . '.pdf';
+        $fileName = 'kico_estimate_' . time() . '.pdf';
         $filePath = $uploadsDir . $fileName;
 
         try {
             $pdf->Output($filePath, 'F');
         } catch (\Throwable $e) {
             throw new \RuntimeException('Failed to write PDF file: ' . $e->getMessage(), 0, $e);
+        } finally {
+            foreach ($tmpFiles as $tmp) {
+                @unlink($tmp);
+            }
         }
 
         if (!file_exists($filePath)) {
@@ -347,7 +368,7 @@ class PDFService
         $pdf->Ln(2);
         $pdf->SetFont('helvetica', 'B', 11);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFillColor(204, 102, 0);
+        $pdf->SetFillColor(...self::HEADER_RGB);
         $pdf->Cell(self::USABLE_W, 8, 'PROPOSAL FOR INTERIOR WORKS', 0, 1, 'C', true);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetFillColor(255, 255, 255);
@@ -529,7 +550,7 @@ class PDFService
     private function drawTableHeader(KicoPDF $pdf): void
     {
         $pdf->SetFont('helvetica', 'BI', 9);
-        $pdf->SetFillColor(255, 204, 102);
+        $pdf->SetFillColor(...self::headerLite());
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetDrawColor(0, 0, 0);
         $pdf->SetLineWidth(0.4);
@@ -597,35 +618,443 @@ class PDFService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 360° image links section
+    // Image preview section (the first 5 uploaded images only, 360° images included; no captions)
+    //
+    //   - photos first, in upload order; 360° images LAST, each on its own full-width row
+    //   - the photo grid is as large as the page allows: one column (full width) when everything still fits
+    //     on one page, otherwise two columns; a lone last photo is centred
+    //   - a 360° image gets a dashed orange frame, an orange "360°" badge, a "Click to view in 360°" bar and
+    //     the whole picture is a link to the 360° viewer
     // ─────────────────────────────────────────────────────────────────────────
 
-    private function add360LinksSection(KicoPDF $pdf, array $urls): void
+    private const IMG_GAP        = 4.0;    // mm between pictures
+    private const PHOTO_RATIO    = 0.75;   // photo box height = width x 0.75 (4:3)
+    private const PHOTO_MAX_H    = 115.0;  // tallest photo box (single column)
+    private const PANO_H         = 90.0;   // 360° box: full width x 90 mm (2:1 panorama)
+    private const BOTTOM_LIMIT   = 12.0;   // keep clear of the page footer
+    public  const MAX_IMAGES     = 5;      // pictures shown in the PDF (photos + 360° images)
+
+    /** @param array<int,array{path?:string,is360?:bool,url?:string}> $images  @param string[] $tmpFiles filled with temp files to delete */
+    private function addImagePreviewSection(KicoPDF $pdf, array $images, array &$tmpFiles): void
     {
-        $pdf->Ln(5);
+        // The PDF shows only the FIRST 5 uploaded images (360° ones included); every upload is still saved.
+        $usable = array_values(array_filter($images, static fn($im) => !empty($im['path']) && is_file($im['path'])));
+        $usable = array_slice($usable, 0, self::MAX_IMAGES);
+
+        // then photos first (upload order), 360° images last
+        $photos = [];
+        $panos  = [];
+        foreach ($usable as $im) {
+            if (!empty($im['is360'])) {
+                $panos[] = $im;
+            } else {
+                $photos[] = $im;
+            }
+        }
+        if (!$photos && !$panos) {
+            return;
+        }
+
+        $pdf->SetMargins(self::MARGIN, self::MARGIN, self::MARGIN);
+        $pdf->SetAutoPageBreak(false);
+
+        $room    = self::PAGE_H - self::MARGIN - self::BOTTOM_LIMIT;    // lowest usable Y
+        $pageAvl = $room - self::MARGIN - 10;                           // height for pictures on a page of its own (10 = heading)
+
+        // 1. choose the photo grid: 1 column if all pictures then fit on one page, else 2 columns
+        $panoBlock = count($panos) * (self::PANO_H + self::IMG_GAP);
+        $layout = null;
+        foreach ([1, 2] as $cols) {
+            $cellW = (self::USABLE_W - self::IMG_GAP * ($cols - 1)) / $cols;
+            $cellH = min($cellW * self::PHOTO_RATIO, self::PHOTO_MAX_H);
+            $rows  = (int)ceil(count($photos) / $cols);
+            $total = $rows * ($cellH + self::IMG_GAP) + $panoBlock;
+            $layout = ['cols' => $cols, 'w' => $cellW, 'h' => $cellH, 'total' => $total];
+            if ($total <= $pageAvl) {
+                break;   // fits on one page at this (largest) size
+            }
+        }
+        if (!$photos) {
+            $layout = ['cols' => 1, 'w' => self::USABLE_W, 'h' => 0.0, 'total' => $panoBlock];
+        }
+
+        // 2. keep the gallery together: if it does not fit below the content it starts on a fresh page
+        //    (a gallery longer than one page then flows over pages row by row)
+        $galleryH = 10 + $layout['total'];
+        $newPage  = ($pdf->GetY() + 5 + $galleryH > $room);
+        $this->imageSectionHeading($pdf, 'IMAGE PREVIEW', $newPage, $photos ? $layout['h'] : self::PANO_H);
+
+        // 3. photos (grid)
+        $cols = $layout['cols'];
+        foreach (array_chunk($photos, $cols) as $rowImages) {
+            $this->ensureImageRowFits($pdf, $layout['h'] + self::IMG_GAP);
+            $y = $pdf->GetY();
+            // a lone last photo is centred
+            $rowW = count($rowImages) * $layout['w'] + (count($rowImages) - 1) * self::IMG_GAP;
+            $x0   = self::MARGIN + (self::USABLE_W - $rowW) / 2;
+            foreach ($rowImages as $i => $im) {
+                $this->drawImageCell($pdf, $im, $x0 + $i * ($layout['w'] + self::IMG_GAP), $y, $layout['w'], $layout['h'], false, $tmpFiles);
+            }
+            $pdf->SetY($y + $layout['h'] + self::IMG_GAP);
+        }
+
+        // 4. 360° images last, full width
+        foreach ($panos as $im) {
+            $this->ensureImageRowFits($pdf, self::PANO_H + self::IMG_GAP);
+            $y = $pdf->GetY();
+            $this->drawImageCell($pdf, $im, self::MARGIN, $y, self::USABLE_W, self::PANO_H, true, $tmpFiles);
+            $pdf->SetY($y + self::PANO_H + self::IMG_GAP);
+        }
+
+        $pdf->SetAutoPageBreak(true, self::MARGIN);
+    }
+
+    private function imageSectionHeading(KicoPDF $pdf, string $title, bool $newPage, float $firstRowH): void
+    {
+        // keep the heading together with at least the first row of pictures
+        if ($newPage || $pdf->GetY() + 7 + 3 + $firstRowH > self::PAGE_H - self::MARGIN - self::BOTTOM_LIMIT) {
+            $pdf->AddPage();
+        } else {
+            $pdf->Ln(5);
+        }
         $pdf->SetFont('helvetica', 'B', 10);
-        $pdf->SetFillColor(230, 126, 34);
+        $pdf->SetFillColor(...self::HEADER_RGB);
         $pdf->SetTextColor(255, 255, 255);
-        $pdf->Cell(self::USABLE_W, 7, '360° VIEW LINKS', 1, 1, 'C', true);
+        $pdf->Cell(self::USABLE_W, 7, $title, 0, 1, 'C', true);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Ln(3);
+    }
+
+    private function ensureImageRowFits(KicoPDF $pdf, float $rowHeight): void
+    {
+        if ($pdf->GetY() + $rowHeight > self::PAGE_H - self::MARGIN - self::BOTTOM_LIMIT) {
+            $pdf->AddPage();
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetTextColor(120, 120, 120);
+            $pdf->Cell(self::USABLE_W, 5, 'IMAGE PREVIEW (continued)', 0, 1, 'L');
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->Ln(1);
+        }
+    }
+
+    /** One framed picture; 360° pictures get the badge, dashed frame, click bar and link. No caption. */
+    private function drawImageCell(KicoPDF $pdf, array $im, float $x, float $y, float $w, float $h, bool $is360, array &$tmpFiles): void
+    {
+        $accent = self::HEADER_RGB;   // same colour as the header bars
+        $url    = (string)($im['url'] ?? '');
+
+        // frame + light background
+        $pdf->SetLineStyle(['width' => 0.25, 'color' => [200, 200, 200], 'dash' => 0]);
+        $pdf->SetFillColor(246, 246, 246);
+        $pdf->Rect($x, $y, $w, $h, 'DF');
+
+        // the picture, fitted (keeps aspect ratio) and centred inside the frame; large source for sharp zoom
+        $prepared = $this->prepareThumbnail($im['path'], $is360 ? 2600 : 2000, $tmpFiles);
+        $pad = 1.0;
+        if ($prepared !== null) {
+            $pdf->Image(
+                $prepared, $x + $pad, $y + $pad, $w - 2 * $pad, $h - 2 * $pad,
+                'JPG', ($is360 && $url !== '') ? $url : '', '', false, 300, '', false, false, 0, 'CM'
+            );
+        } else {
+            $pdf->SetFont('helvetica', 'I', 9);
+            $pdf->SetTextColor(150, 150, 150);
+            $pdf->SetXY($x, $y + $h / 2 - 3);
+            $pdf->Cell($w, 6, 'Image not available', 0, 0, 'C');
+            $pdf->SetTextColor(0, 0, 0);
+        }
+
+        if ($is360) {
+            // dashed orange frame
+            $pdf->SetLineStyle(['width' => 0.8, 'color' => $accent, 'dash' => '3,2']);
+            $pdf->Rect($x, $y, $w, $h, 'D');
+            $pdf->SetLineStyle(['width' => 0.2, 'color' => [0, 0, 0], 'dash' => 0]);
+
+            // "360°" badge, top-left
+            $pdf->SetFillColor($accent[0], $accent[1], $accent[2]);
+            $pdf->RoundedRect($x + 3, $y + 3, 18, 8, 2, '1111', 'F');
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetXY($x + 3, $y + 3);
+            $pdf->Cell(18, 8, '360°', 0, 0, 'C');
+
+            // semi-transparent bar at the bottom with a play triangle + hint
+            $barH = 8.0;
+            $by   = $y + $h - $barH - 0.5;
+            $pdf->SetAlpha(0.72);
+            $pdf->SetFillColor(30, 30, 30);
+            $pdf->Rect($x + 0.5, $by, $w - 1, $barH, 'F');
+            $pdf->SetAlpha(1);
+            $pdf->SetFillColor(255, 255, 255);
+            $ty = $by + $barH / 2;
+            $pdf->Polygon([$x + 4, $ty - 2.2, $x + 4, $ty + 2.2, $x + 8, $ty], 'F');
+            $pdf->SetFont('helvetica', 'B', 9);
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetXY($x + 10, $by);
+            $pdf->Cell($w - 12, $barH, 'Click to view in 360°', 0, 0, 'L');
+
+            // whole picture is clickable
+            if ($url !== '') {
+                $pdf->Link($x, $y, $w, $h, $url);
+            }
+        }
 
         $pdf->SetTextColor(0, 0, 0);
-        $pdf->SetFont('helvetica', '', 9);
-        $pdf->SetFillColor(245, 245, 245);
+        $pdf->SetFillColor(255, 255, 255);
+    }
 
-        foreach ($urls as $i => $url) {
-            $label = '360° View ' . ($i + 1);
-            $pdf->SetFont('helvetica', '', 9);
-            $pdf->Cell(40, 7, $label, 1, 0, 'L', true);
-            // Write clickable URL in remaining width
-            $linkW = self::USABLE_W - 40;
-            $x     = $pdf->GetX();
-            $y     = $pdf->GetY();
-            $pdf->SetFont('helvetica', 'U', 9);
-            $pdf->SetTextColor(0, 0, 238);
-            $pdf->Cell($linkW, 7,'Open 360° Image', 1, 1, 'L', false, $url);
-            $pdf->SetTextColor(0, 0, 0);
-            $pdf->SetFont('helvetica', '', 9);
+    /**
+     * Down-scales an uploaded image to a PDF-friendly JPEG (original photos can be many MB), fixing the
+     * camera orientation. Returns the temp file path (registered in $tmpFiles) or null on failure.
+     */
+    private function prepareThumbnail(string $src, int $maxSide, array &$tmpFiles): ?string
+    {
+        $info = @getimagesize($src);
+        if ($info === false || empty($info[0]) || empty($info[1])) {
+            return null;
         }
+        [$w, $h] = $info;
+        $type = $info[2];
+        if (!in_array($type, [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) {
+            return null;
+        }
+
+        // GD needs ~5 bytes per pixel to decode; skip the resize when it would not fit in memory
+        @ini_set('memory_limit', '768M');
+        $limit = $this->memoryLimitBytes();
+        if ($limit > 0 && ($w * $h * 5 + memory_get_usage()) > $limit * 0.9) {
+            return $type === IMAGETYPE_JPEG ? $src : null;
+        }
+
+        $img = $type === IMAGETYPE_JPEG ? @imagecreatefromjpeg($src) : @imagecreatefrompng($src);
+        if ($img === false) {
+            return null;
+        }
+
+        if ($type === IMAGETYPE_JPEG) {
+            $img = $this->applyOrientation($img, $this->jpegOrientation($src));
+        }
+
+        $iw = imagesx($img);
+        $ih = imagesy($img);
+        $ratio = min(1.0, $maxSide / max($iw, $ih));
+        $nw = max(1, (int)round($iw * $ratio));
+        $nh = max(1, (int)round($ih * $ratio));
+
+        $out = imagecreatetruecolor($nw, $nh);
+        imagefill($out, 0, 0, imagecolorallocate($out, 255, 255, 255)); // flatten PNG transparency on white
+        imagecopyresampled($out, $img, 0, 0, 0, 0, $nw, $nh, $iw, $ih);
+        imagedestroy($img);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'kico_img_');
+        if ($tmp === false) {
+            imagedestroy($out);
+            return null;
+        }
+        $tmpFiles[] = $tmp;
+        imageinterlace($out, false);
+        $ok = imagejpeg($out, $tmp, 82);
+        imagedestroy($out);
+        return $ok ? $tmp : null;
+    }
+
+    private function memoryLimitBytes(): int
+    {
+        $v = trim((string)ini_get('memory_limit'));
+        if ($v === '' || $v === '-1') {
+            return 0;
+        }
+        $n = (float)$v;
+        return (int)match (strtolower(substr($v, -1))) {
+            'g' => $n * 1024 ** 3,
+            'm' => $n * 1024 ** 2,
+            'k' => $n * 1024,
+            default => $n,
+        };
+    }
+
+    /** EXIF orientation tag of a JPEG (1 = upright). Parsed by hand: the exif extension may be missing. */
+    private function jpegOrientation(string $path): int
+    {
+        $fh = @fopen($path, 'rb');
+        if (!$fh) {
+            return 1;
+        }
+        $head = (string)fread($fh, 65536);
+        fclose($fh);
+        $len = strlen($head);
+        if ($len < 12 || substr($head, 0, 2) !== "\xFF\xD8") {
+            return 1;
+        }
+
+        $pos = 2;
+        while ($pos + 4 < $len && $head[$pos] === "\xFF") {
+            $marker = ord($head[$pos + 1]);
+            $size   = unpack('n', substr($head, $pos + 2, 2))[1];
+            if ($marker === 0xE1 && substr($head, $pos + 4, 6) === "Exif\0\0") {
+                $tiff = $pos + 10;
+                $le   = substr($head, $tiff, 2) === 'II';
+                $u16  = static fn(int $o) => $o + 2 <= strlen($head) ? unpack($le ? 'v' : 'n', substr($head, $o, 2))[1] : 0;
+                $u32  = static fn(int $o) => $o + 4 <= strlen($head) ? unpack($le ? 'V' : 'N', substr($head, $o, 4))[1] : 0;
+                $ifd  = $tiff + $u32($tiff + 4);
+                $n    = $u16($ifd);
+                for ($i = 0; $i < $n && $i < 64; $i++) {
+                    $e = $ifd + 2 + $i * 12;
+                    if ($u16($e) === 0x0112) {
+                        $o = $u16($e + 8);
+                        return ($o >= 1 && $o <= 8) ? $o : 1;
+                    }
+                }
+                return 1;
+            }
+            if ($marker === 0xDA || $size < 2) {
+                break;
+            }
+            $pos += 2 + $size;
+        }
+        return 1;
+    }
+
+    private function applyOrientation($img, int $orientation)
+    {
+        switch ($orientation) {
+            case 2: imageflip($img, IMG_FLIP_HORIZONTAL); return $img;
+            case 3: $r = imagerotate($img, 180, 0); break;
+            case 4: imageflip($img, IMG_FLIP_VERTICAL); return $img;
+            case 5: imageflip($img, IMG_FLIP_HORIZONTAL); $r = imagerotate($img, 90, 0); break;
+            case 6: $r = imagerotate($img, -90, 0); break;
+            case 7: imageflip($img, IMG_FLIP_HORIZONTAL); $r = imagerotate($img, -90, 0); break;
+            case 8: $r = imagerotate($img, 90, 0); break;
+            default: return $img;
+        }
+        if ($r === false) {
+            return $img;
+        }
+        imagedestroy($img);
+        return $r;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Terms & conditions: "kico terms.docx" printed in full on two dedicated pages
+    //
+    // The document's tables/paragraphs are converted to HTML by DocxTermsRenderer. Blocks (one table or
+    // paragraph each) are never split across pages. The largest font scale at which everything fits on
+    // exactly two pages is used, so the pages are filled as fully as possible.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private const TERMS_DOCX = 'kico terms.docx';
+    private const TERMS_GAP  = 2.5;   // mm between blocks
+
+    private function termsDocxPath(): string
+    {
+        foreach ([FCPATH, defined('ROOTPATH') ? ROOTPATH : FCPATH] as $base) {
+            $p = rtrim((string)$base, '/\\') . DIRECTORY_SEPARATOR . self::TERMS_DOCX;
+            if (is_file($p)) {
+                return $p;
+            }
+        }
+        return '';
+    }
+
+    private function addTermsPages(KicoPDF $pdf): void
+    {
+        $path = $this->termsDocxPath();
+        if ($path === '') {
+            log_message('warning', 'PDFService: "' . self::TERMS_DOCX . '" not found - terms pages skipped.');
+            return;
+        }
+        // the document's header colour (#E36414) and light-orange highlight (#FFF3E0) are printed in the PDF's colours
+        $docx = (new DocxTermsRenderer($path))
+            ->mapColor('E36414', sprintf('%02X%02X%02X', ...self::HEADER_RGB))        // header bars + accents
+            ->mapColor('FFF3E0', sprintf('%02X%02X%02X', ...self::headerLite()));       // highlighted row (Grand Total)
+        if (!$docx->isAvailable()) {
+            log_message('warning', 'PDFService: could not read "' . self::TERMS_DOCX . '" - terms pages skipped.');
+            return;
+        }
+
+        $top   = (float)self::MARGIN;
+        $limit = self::PAGE_H - self::MARGIN - self::BOTTOM_LIMIT;   // lowest usable Y
+        $avail = $limit - $top;
+
+        $pdf->SetMargins(self::MARGIN, self::MARGIN, self::MARGIN);
+        $pdf->SetAutoPageBreak(false);
+        $pdf->AddPage();
+
+        // pick the largest scale whose blocks fit on two pages
+        $blocks  = [];
+        $heights = [];
+        for ($scale = 1.50; $scale >= 0.50; $scale -= 0.025) {
+            $blocks = $docx->blocks($scale);
+            if (!$blocks) {
+                return;
+            }
+            $heights = array_map(fn($b) => $this->measureHtmlHeight($pdf, $b['html']), $blocks);
+
+            $pages = 1;
+            $y     = 0.0;
+            foreach ($heights as $h) {
+                $need = $h + ($y > 0 ? self::TERMS_GAP : 0);
+                if ($y > 0 && $y + $need > $avail) {
+                    $pages++;
+                    $y = $h;
+                } else {
+                    $y += $need;
+                }
+            }
+            if ($pages <= 2) {
+                break;
+            }
+        }
+
+        // assign blocks to pages (greedy, blocks stay whole)
+        $pageBlocks = [[]];
+        $y = 0.0;
+        foreach ($heights as $i => $h) {
+            $cur  = count($pageBlocks) - 1;
+            $need = $h + ($pageBlocks[$cur] ? self::TERMS_GAP : 0);
+            if ($pageBlocks[$cur] && $y + $need > $avail) {
+                $pageBlocks[] = [$i];
+                $y = $h;
+            } else {
+                $pageBlocks[$cur][] = $i;
+                $y += $need;
+            }
+        }
+
+        // print (page 1 is already added). Leftover height on a page is spread over the gaps between its
+        // blocks (max 9 mm each) so the page looks full rather than ending in a band of white space.
+        foreach ($pageBlocks as $pageNo => $idxs) {
+            if ($pageNo > 0) {
+                $pdf->AddPage();
+            }
+            $pdf->SetY($top);
+
+            $used = array_sum(array_map(fn($i) => $heights[$i], $idxs)) + self::TERMS_GAP * (count($idxs) - 1);
+            $gap  = self::TERMS_GAP;
+            if (count($idxs) > 1) {
+                $gap += min(9.0, max(0.0, ($avail - $used - 4.0) / (count($idxs) - 1)));
+            }
+            foreach ($idxs as $k => $i) {
+                $pdf->writeHTML($blocks[$i]['html'], true, false, true, false, '');
+                if ($k < count($idxs) - 1) {
+                    $pdf->SetY($pdf->GetY() + $gap);
+                }
+            }
+        }
+
+        $pdf->SetAutoPageBreak(true, self::MARGIN);
+    }
+
+    /** Height (mm) a block of HTML takes when printed at the top of a page; nothing is kept. */
+    private function measureHtmlHeight(KicoPDF $pdf, string $html): float
+    {
+        $pdf->startTransaction();
+        $pdf->SetY((float)self::MARGIN);
+        $y0 = $pdf->GetY();
+        $pdf->writeHTML($html, true, false, true, false, '');
+        $h = $pdf->GetY() - $y0;
+        $pdf->rollbackTransaction(true);
+        return max(0.0, $h);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

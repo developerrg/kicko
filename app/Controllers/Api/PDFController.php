@@ -11,7 +11,7 @@ use CodeIgniter\HTTP\ResponseInterface;
 
 class PDFController extends BaseController
 {
-    private const MAX_IMAGES      = 20;
+    private const MAX_IMAGES      = 20; // upload guard only; the PDF itself shows the first 5 images
     private const MAX_SIZE_BYTES  = 50 * 1024 * 1024; // 50 MB
     private const ALLOWED_MIME    = ['image/jpeg', 'image/jpg', 'image/png'];
     private const ALLOWED_EXT     = ['jpg', 'jpeg', 'png'];
@@ -87,8 +87,8 @@ class PDFController extends BaseController
             // $customerDetails already populated from parse block above.
 
             // Static company fields
-            $customerDetails['serviceSupport'] = '0471-4064545';
-            $customerDetails['companyEmail']   = 'info@insidedesignindia.com';
+            $customerDetails['serviceSupport'] = '+91 8281654455';
+            $customerDetails['companyEmail']   = 'hello@kicomod.com';
 
             // Location — from customerDetails only (flat form or JSON object)
             $rawLocation = isset($customerDetails['location']) ? trim((string)$customerDetails['location']) : '';
@@ -373,6 +373,7 @@ class PDFController extends BaseController
             // ── Save images, collect 360 viewer URLs ──────────────────────────
             $urls360    = [];
             $savedImages = [];
+            $pdfImages   = []; // files + flags handed to the PDF (thumbnails; 360 images get their viewer link)
 
             if (!empty($uploadedFiles)) {
                 $imageDir = FCPATH . 'uploads/proposals/' . $proposalId . '/';
@@ -414,8 +415,10 @@ class PDFController extends BaseController
                             $imageModel->update($imageId, ['url' => $viewerUrl]);
                             $urls360[]  = $viewerUrl;
                             $savedImages[] = ['url' => $viewerUrl, 'rawUrl' => $publicUrl, 'is360' => true];
+                            $pdfImages[]   = ['path' => $imageDir . $newName, 'is360' => true, 'url' => $viewerUrl];
                         } else {
                             $savedImages[] = ['url' => $publicUrl, 'rawUrl' => $publicUrl, 'is360' => false];
+                            $pdfImages[]   = ['path' => $imageDir . $newName, 'is360' => false, 'url' => $publicUrl];
                         }
                     }
 
@@ -425,7 +428,7 @@ class PDFController extends BaseController
 
             // ── Generate PDF (now with 360 URLs) ──────────────────────────────
             $pdfService = new PDFService();
-            $pdfResult  = $pdfService->generateKitchenExportPDF($pdfItems, $customerDetails, $totals, $urls360);
+            $pdfResult  = $pdfService->generateKitchenExportPDF($pdfItems, $customerDetails, $totals, $urls360, $pdfImages);
 
             // ── Update proposal with PDF info ─────────────────────────────────
             $proposalModel->update($proposalId, [

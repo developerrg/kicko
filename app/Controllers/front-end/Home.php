@@ -22,38 +22,38 @@ class Home extends BaseController
         $this->categories = $this->productdisplayModel->getAllCategoriesAndSub();
     }
 
-   public function index()
-{
-    $data['categories'] = $this->categories;
-    $data['title'] = 'Homepage';
+    public function index()
+    {
+        $data['categories'] = $this->categories;
+        $data['title'] = 'Homepage';
 
-    $products = $this->productdisplayModel->getAllProducts();
-    $reviewModel = new \App\Models\ReviewModel();
-    $productIds = array_column($products, 'pr_Id');
-    $avgRatings = $reviewModel->getAverageRatingForProducts($productIds);
-    $ratingsMap = [];
-    foreach ($avgRatings as $rating) {
-        $ratingsMap[$rating['pr_Id']] = $rating['avg_rating'];
-    }
-    foreach ($products as &$product) {
-        $product['avg_rating'] = $ratingsMap[$product['pr_Id']] ?? 0;
-    }
-    $data['product'] = $products;
-    // Load theme
-    $themeModel = new \App\Models\Admin\Theme_Model();
-    $themes = $themeModel->fetchTheme();
-    if (!empty($themes)) {
-        $data['themes'] = $themes[0];
-    }
-    // Load views
-    $template  = view('common/header', $data);
-    $template .= view('banner');
-    $template .= view('category', $data);
-    $template .= view('top_products', $data);
-    $template .= view('footer_banner', $data);
-    $template .= view('common/footer', $data);
+        $products = $this->productdisplayModel->getAllProducts();
+        $reviewModel = new \App\Models\ReviewModel();
+        $productIds = array_column($products, 'pr_Id');
+        $avgRatings = $reviewModel->getAverageRatingForProducts($productIds);
+        $ratingsMap = [];
+        foreach ($avgRatings as $rating) {
+            $ratingsMap[$rating['pr_Id']] = $rating['avg_rating'];
+        }
+        foreach ($products as &$product) {
+            $product['avg_rating'] = $ratingsMap[$product['pr_Id']] ?? 0;
+        }
+        $data['product'] = $products;
+        // Load theme
+        $themeModel = new \App\Models\Admin\Theme_Model();
+        $themes = $themeModel->fetchTheme();
+        if (!empty($themes)) {
+            $data['themes'] = $themes[0];
+        }
+        // Load views
+        $template = view('common/header', $data);
+        $template .= view('banner');
+        $template .= view('category', $data);
+        $template .= view('top_products', $data);
+        $template .= view('footer_banner', $data);
+        $template .= view('common/footer', $data);
 
-    return $template;
-}
+        return $template;
+    }
 
 }
